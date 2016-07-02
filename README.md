@@ -1,7 +1,7 @@
 # Python HTTPoxy Vulnerability under CGI
 
 Python is not usually deployed under CGI. But there are guides that provide for CGI as a deployment
-mechanism of last resort.
+mechanism of last resort. e.g. http://flask.readthedocs.io/en/latest/deploying/cgi/
 
 When using something like wsgiref.handlers.CGIHandler, the os.environ map is polluted by CGI values,
 including HTTP_PROXY.
